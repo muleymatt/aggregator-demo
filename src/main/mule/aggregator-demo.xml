@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:aggregators="http://www.mulesoft.org/schema/mule/aggregators"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/aggregators http://www.mulesoft.org/schema/mule/aggregators/current/mule-aggregators.xsd">
+	<http:listener-config name="HTTP_Listener_config"
+		doc:name="HTTP Listener config"
+		doc:id="8b9010aa-debe-46ac-a570-3301c9ff1d74">
+		<http:listener-connection host="0.0.0.0"
+			port="8081" />
+	</http:listener-config>
+	<vm:config name="VM_Config" doc:name="VM Config"
+		doc:id="f4f8f4d3-7863-4a12-8f29-b9fdd3eda48c">
+		<vm:queues>
+			<vm:queue queueName="demo" />
+			<vm:queue queueName="emptyqueue" />
+		</vm:queues>
+	</vm:config>
+	<flow name="aggregation-demo-simulate-messages"
+		doc:id="73deb481-fc9a-4469-be2d-e6cb35dddc51">
+		<http:listener doc:name="Listener"
+			doc:id="91f50e2f-ca64-4bf9-a926-261a4f7a809b"
+			config-ref="HTTP_Listener_config" path="/" />
+		<foreach doc:name="For Each" doc:id="3d811941-b405-45ee-aeb4-ae4fbf85d581" collection="1 to 9">
+			<set-payload value='#[%dw 2.0&#10;output application/json&#10;---&#10;{&#10;    "enrollment_id": randomInt(2) + 1,&#10;    "enrollment_step_id" : randomInt(100) + 1,&#10;    "updated_datetime": now()&#10;}]' doc:name="Set Payload" doc:id="fd9e50b2-0a65-444b-8adc-f345b08035c0" />
+			<logger level="INFO" doc:name="Logger" doc:id="f5c26142-8bf8-4b2a-9475-36e7611fbe4d" message='#[output application/dw&#10;---&#10;"PUBLISHING MESSAGE: enrollment_id [" ++ payload.enrollment_id ++ "] enrollment_step_id [" ++ payload.enrollment_step_id ++ "]"]'/>
+			<vm:publish queueName="demo" doc:name="Publish" doc:id="e09b0206-eab4-43ea-b8aa-0a2d44556ae0" config-ref="VM_Config">
+		</vm:publish>
+		</foreach>
+	</flow>
+	<flow name="aggregation-demo-aggregate-messages"
+		doc:id="d243ffb3-31b4-426b-9dde-fa2b6fad30b2">
+		<vm:listener queueName="demo" doc:name="Listener"
+			doc:id="aa33fac3-8b69-469c-b5d2-1e0c9860db54" config-ref="VM_Config" />
+		<aggregators:group-based-aggregator
+			doc:name="Group based aggregator"
+			doc:id="c65a8368-40e4-4ff4-a255-16af147c0313"
+			groupId="#[payload.enrollment_id]" name="groupBasedAggregator"
+			groupSize="5" timeout="3" evictionTime="0">
+			<aggregators:incremental-aggregation >
+				<logger level="INFO" doc:name="Logger" doc:id="b9d19ff5-eb8f-4e83-b6c8-02829728b3c2" message='#[output application/dw&#10;---&#10;"INCREMENTAL AGGREGATION: size [" ++ sizeOf(payload) ++ "] aggregationId [" ++ attributes.aggregationId ++ "]"]'/>
+			</aggregators:incremental-aggregation>
+			<aggregators:aggregation-complete >
+				<logger level="INFO" doc:name="Logger" doc:id="467d21fa-0f67-4de8-a0ff-6df9d89f1785" message='#[output application/dw&#10;---&#10;"AGGREGATION COMPLETE: size [" ++ sizeOf(payload) ++ "] aggregationId [" ++ attributes.aggregationId ++ "]"]'/>
+			</aggregators:aggregation-complete>
+		</aggregators:group-based-aggregator>
+	</flow>
+	<flow name="aggregation-demo-process-aggregations"
+		doc:id="4827b27f-f0d8-478a-bd95-f73ad5fe7806">
+		<aggregators:aggregator-listener
+			doc:name="Aggregator listener"
+			doc:id="e603fbbd-9095-41cb-bcaf-8c74f31b1ce4"
+			aggregatorName="groupBasedAggregator" includeTimedOutGroups="true" />
+		<logger level="INFO" doc:name="Logger"
+			doc:id="a678e5e7-6b4d-41d0-b6f0-7f96e8834ab3"
+			message='#[output application/dw&#10;---&#10;"PROCESSING AGGREGATION: size [" ++ sizeOf(payload) ++ "] aggregationId [" ++ attributes.aggregationId ++ "]"]' />
+	</flow>
+
+</mule>
